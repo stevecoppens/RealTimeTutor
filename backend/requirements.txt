@@ -1,9 +1,6 @@
 fastapi==0.109.1
 uvicorn==0.27.0
 python-multipart==0.0.6
-websockets==12.0
-google-cloud-aiplatform==1.38.1
-pillow==10.2.0
+websockets>=12.0
 python-dotenv==1.0.0
-google-cloud-storage==2.14.0
-google-generativeai==0.3.2
+pyaudio==0.2.14
