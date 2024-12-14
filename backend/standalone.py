@@ -6,10 +6,61 @@ from dotenv import load_dotenv
 import numpy as np
 import pyaudio
 import torch
-from websockets.client import connect
+from websockets import connect
+import tkinter as tk
+from tkinter import ttk
+import tkinter.scrolledtext as scrolledtext
+
+
+from google.genai.types import (GoogleSearch,Tool, GenerateContentConfig)
+
+google_search_tool = Tool(google_search=GoogleSearch())
 
 # load env variables from .env file
 load_dotenv()
+
+class ConfigGUI:
+    def __init__(self):
+        self.root = tk.Tk()
+        self.root.title("Gemini Configuration")
+        self.root.geometry("600x500")
+
+        # System Prompt
+        tk.Label(self.root, text="System Prompt:").pack(pady=5)
+        self.system_prompt = scrolledtext.ScrolledText(self.root, width=60, height=10)
+        self.system_prompt.pack(pady=5)
+        self.system_prompt.insert(tk.END, "You are a friendly Gemini 2.0 model. Respond verbally in a casual, helpful tone.")
+
+        # Voice Selection
+        tk.Label(self.root, text="Voice:").pack(pady=5)
+        self.voice_var = tk.StringVar(value="Puck")
+        voices = ["Puck", "Charon", "Kore", "Fenrir", "Aoede"]
+        voice_dropdown = ttk.Combobox(self.root, textvariable=self.voice_var, values=voices, state="readonly")
+        voice_dropdown.pack(pady=5)
+
+        # Google Search Checkbox
+        self.google_search_var = tk.BooleanVar(value=True)
+        google_search_cb = tk.Checkbutton(self.root, text="Enable Google Search", variable=self.google_search_var)
+        google_search_cb.pack(pady=5)
+
+        # Start Button
+        tk.Button(self.root, text="Start Gemini", command=self.start_gemini).pack(pady=20)
+
+    def get_config(self):
+        return {
+            "system_prompt": self.system_prompt.get("1.0", tk.END).strip(),
+            "voice": self.voice_var.get(),
+            "google_search": self.google_search_var.get()
+        }
+
+    def start_gemini(self):
+        config = self.get_config()
+        self.root.destroy()
+        client = GeminiConnection(config)
+        asyncio.run(client.start())
+
+    def run(self):
+        self.root.mainloop()
 
 class VoiceActivityDetector:
     def __init__(self):
@@ -33,13 +84,18 @@ class VoiceActivityDetector:
         return speech_prob > 0.8  # Adjust threshold as needed
 
 class GeminiConnection:
-    def __init__(self):
+    def __init__(self, config=None):
         # Your Gemini API key. Must be set as an environment variable or replace here with a string.
         self.api_key = os.environ.get("GEMINI_API_KEY")
         # The Gemini 2.0 (flash) model name
         self.model = "gemini-2.0-flash-exp"
+        self.config = config or {
+            "system_prompt": "You are a friendly Gemini 2.0 model. Respond verbally in a casual, helpful tone.",
+            "voice": "Puck",
+            "google_search": True
+        }
         
-        # WebSocket endpoint for Gemini’s BidiGenerateContent API
+        # WebSocket endpoint for Gemini's BidiGenerateContent API
         # Format: wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key=API_KEY
         self.uri = (
             "wss://generativelanguage.googleapis.com/ws/"
@@ -48,7 +104,6 @@ class GeminiConnection:
         )
         self.ws = None
         self.vad = VoiceActivityDetector()
-
 
         # Audio settings
         self.FORMAT = pyaudio.paInt16
@@ -60,44 +115,44 @@ class GeminiConnection:
         # An asyncio.Queue to buffer server audio data
         self.audio_queue = asyncio.Queue()
 
-        self.is_playing = False  # Add this flag
+        self.is_playing = False
 
     async def start(self):
         """Create a WebSocket connection and run the capture, streaming, and playback tasks concurrently."""
         # Open the WebSocket
-        self.ws = await connect(self.uri, extra_headers={"Content-Type": "application/json"})
+        self.ws = await connect(self.uri, additional_headers={"Content-Type": "application/json"})
         
-        # 1) Send the BidiGenerateContentSetup message 
-        #    specifying the model and any generation configs (we want audio output).
+        generation_config = {} if not self.config["google_search"] else GenerateContentConfig(tools=[google_search_tool])
+
+        generation_config = {
+            "response_modalities": ["AUDIO"],
+            "speech_config": {
+                "voice_config": {
+                    "prebuilt_voice_config": {
+                        "voice_name": self.config["voice"]
+                    }
+                }
+            }
+        }
+        
         setup_message = {
             "setup": {
                 "model": f"models/{self.model}",
-                "generation_config": {
-                    "response_modalities": ["AUDIO"],
-                    "speech_config": {
-                        "voice_config": {
-                            "prebuilt_voice_config": {
-                                # Pick a voice: "Puck", "Charon", "Kore", "Fenrir", or "Aoede"
-                                "voice_name": "Puck"
-                            }
-                        }
-                    }
-                },
+                "generation_config": generation_config,
                 "system_instruction": {
                     "parts": [
                         {
-                            "text": "You are a friendly Gemini 2.0 model. Respond verbally in a casual, helpful tone."
+                            "text": self.config["system_prompt"]
                         }
                     ]
                 }
             }
         }
+        
         await self.ws.send(json.dumps(setup_message))
 
-        # The first server response is BidiGenerateContentSetupComplete. We can read and ignore it or log it.
         first_msg = await self.ws.recv()
         print("Setup complete message from Gemini:", first_msg)
-
         print("Connected to Gemini. Speak into your microphone; press Ctrl+C to exit.")
         
         # 2) Run capture, read server messages, and playback concurrently
@@ -108,55 +163,72 @@ class GeminiConnection:
 
 
     async def capture_audio(self):
-        """Capture audio from your Mac’s microphone and send to Gemini in realtime."""
+        """Capture audio from your Mac's microphone and send to Gemini in realtime."""
         audio = pyaudio.PyAudio()
-        stream = audio.open(
-            format=self.FORMAT,
-            channels=self.CHANNELS,
-            rate=self.INPUT_RATE,
-            input=True,
-            frames_per_buffer=self.CHUNK
-        )
-
+        stream = None
         try:
+            stream = audio.open(
+                format=self.FORMAT,
+                channels=self.CHANNELS,
+                rate=self.INPUT_RATE,
+                input=True,
+                frames_per_buffer=self.CHUNK
+            )
+
             while True:
-                data = await asyncio.to_thread(stream.read, self.CHUNK)
-                
-                # Only process input when we're not playing Gemini's response
-                if not self.is_playing:
-                    if not self.vad.is_speech(data):
-                        if not hasattr(self, '_printed_no_speech'):
-                            print("No speech detected")
-                            self._printed_no_speech = True
-                        data = b'\x00' * len(data)
+                try:
+                    data = await asyncio.to_thread(stream.read, self.CHUNK, exception_on_overflow=False)
                     
-                    self._printed_no_speech = False
-                    encoded_data = base64.b64encode(data).decode("utf-8")
-                    realtime_input_msg = {
-                        "realtime_input": {
-                            "media_chunks": [
-                                {
-                                    "data": encoded_data,
-                                    "mime_type": "audio/pcm"
-                                }
-                            ]
+                    # Only process input when we're not playing Gemini's response
+                    if not self.is_playing:
+                        if not self.vad.is_speech(data):
+                            if not hasattr(self, '_printed_no_speech'):
+                                print("No speech detected")
+                                self._printed_no_speech = True
+                            data = b'\x00' * len(data)
+                        else:
+                            self._printed_no_speech = False
+                        
+                        encoded_data = base64.b64encode(data).decode("utf-8")
+                        realtime_input_msg = {
+                            "realtime_input": {
+                                "media_chunks": [
+                                    {
+                                        "data": encoded_data,
+                                        "mime_type": "audio/pcm"
+                                    }
+                                ]
+                            }
                         }
-                    }
-                    await self.ws.send(json.dumps(realtime_input_msg))
-                else:
-                    if not hasattr(self, '_printed_skip_message'):
-                        print("Skipping input while Gemini is speaking")
-                        self._printed_skip_message = True
-                    # Reset the flag when we're not playing anymore
-                    elif not self.is_playing:
-                        self._printed_skip_message = False
+                        await self.ws.send(json.dumps(realtime_input_msg))
+                    else:
+                        if not hasattr(self, '_printed_skip_message'):
+                            print("Skipping input while Gemini is speaking")
+                            self._printed_skip_message = True
+                        # Reset the flag when we're not playing anymore
+                        elif not self.is_playing:
+                            self._printed_skip_message = False
+
+                except OSError as e:
+                    print(f"Audio capture error: {e}")
+                    await asyncio.sleep(0.1)  # Add small delay before retrying
+                    continue
 
         except asyncio.CancelledError:
-            pass
+            print("Audio capture cancelled")
+        except Exception as e:
+            print(f"Unexpected error in capture_audio: {e}")
         finally:
-            stream.stop_stream()
-            stream.close()
-            audio.terminate()
+            if stream is not None and stream.is_active():
+                try:
+                    stream.stop_stream()
+                    stream.close()
+                except OSError:
+                    pass  # Ignore errors during cleanup
+            try:
+                audio.terminate()
+            except:
+                pass  # Ignore errors during cleanup
 
     async def receive_server_messages(self):
         async for msg in self.ws:
@@ -212,7 +284,7 @@ class GeminiConnection:
 
 if __name__ == "__main__":
     try:
-        client = GeminiConnection()
-        asyncio.run(client.start())
+        gui = ConfigGUI()
+        gui.run()
     except KeyboardInterrupt:
         print("Exiting on user interrupt...")
