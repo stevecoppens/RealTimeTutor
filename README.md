@@ -52,8 +52,8 @@ The application provides several configuration options through its GUI:
   - Kore
   - Fenrir
   - Aoede
-- **Enable Google Search**: Allows Gemini to search the internet for current information
-- **Allow Interruptions**: Enables interrupting Gemini while it's speaking
+- **Enable Google Search**: Allows Gemini to search the internet for current information (doesn't work yet)
+- **Allow Interruptions**: Enables interrupting Gemini while it's speaking (see Troubleshooting below if Gemini constantly interrupts itself)
 
 ## Usage
 
