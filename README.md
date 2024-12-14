@@ -1,4 +1,4 @@
-# Gemini Multimodal Playground
+# Gemini Multimodal Playground ✨
 
 A basic Python app for having voice conversations with Google's Gemini 2.0 AI model. Features real-time voice input and text-to-speech responses.
 
