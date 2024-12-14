@@ -1,4 +1,4 @@
-# Gemini Voice Chat - Standalone Application
+# Gemini Multimodal Playground
 
 A basic Python app for having voice conversations with Google's Gemini 2.0 AI model. Features real-time voice input and text-to-speech responses.
 
@@ -7,7 +7,9 @@ A basic Python app for having voice conversations with Google's Gemini 2.0 AI mo
 1. Go to [Google AI Studio](https://makersuite.google.com/app/apikey)
 2. Sign in with your Google account
 3. Click "Create API Key"
-4. Copy the generated API key and paste in the .env file (see below under Installation)
+4. Copy the generated API key and paste into the .env file (see below under Installation)
+
+<img width="600" alt="API key creation" src="https://github.com/saharmor/gemini-multimodal-playground/blob/main/ai%20studio%20api%20key.png">
 
 ## Installation
 
