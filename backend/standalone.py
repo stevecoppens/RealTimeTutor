@@ -60,6 +60,8 @@ class GeminiConnection:
         # An asyncio.Queue to buffer server audio data
         self.audio_queue = asyncio.Queue()
 
+        self.is_playing = False  # Add this flag
+
     async def start(self):
         """Create a WebSocket connection and run the capture, streaming, and playback tasks concurrently."""
         # Open the WebSocket
@@ -120,29 +122,36 @@ class GeminiConnection:
             while True:
                 data = await asyncio.to_thread(stream.read, self.CHUNK)
                 
-                # If no speech detected, send silence instead of skipping
-                if not self.vad.is_speech(data):
-                    print("No speech detected")
-                    # Create silence with the same chunk size
-                    data = b'\x00' * len(data)
-                
-                # Base64 encode and send (always, whether speech or silence)
-                encoded_data = base64.b64encode(data).decode("utf-8")
-                print(f"Sending data: {len(encoded_data)} bytes")
-                
-                realtime_input_msg = {
-                    "realtime_input": {
-                        "media_chunks": [
-                            {
-                                "data": encoded_data,
-                                "mime_type": "audio/pcm"
-                            }
-                        ]
+                # Only process input when we're not playing Gemini's response
+                if not self.is_playing:
+                    if not self.vad.is_speech(data):
+                        if not hasattr(self, '_printed_no_speech'):
+                            print("No speech detected")
+                            self._printed_no_speech = True
+                        data = b'\x00' * len(data)
+                    
+                    self._printed_no_speech = False
+                    encoded_data = base64.b64encode(data).decode("utf-8")
+                    realtime_input_msg = {
+                        "realtime_input": {
+                            "media_chunks": [
+                                {
+                                    "data": encoded_data,
+                                    "mime_type": "audio/pcm"
+                                }
+                            ]
+                        }
                     }
-                }
-                await self.ws.send(json.dumps(realtime_input_msg))
+                    await self.ws.send(json.dumps(realtime_input_msg))
+                else:
+                    if not hasattr(self, '_printed_skip_message'):
+                        print("Skipping input while Gemini is speaking")
+                        self._printed_skip_message = True
+                    # Reset the flag when we're not playing anymore
+                    elif not self.is_playing:
+                        self._printed_skip_message = False
+
         except asyncio.CancelledError:
-            # Cleanup on exit if needed
             pass
         finally:
             stream.stop_stream()
@@ -150,11 +159,6 @@ class GeminiConnection:
             audio.terminate()
 
     async def receive_server_messages(self):
-        """
-        Continuously read messages from Gemini.
-        For audio parts, decode from base64 and enqueue for playback.
-        If 'turn_complete' is True, that signals the model finished speaking or was interrupted.
-        """
         async for msg in self.ws:
             response = json.loads(msg)
             
@@ -177,7 +181,6 @@ class GeminiConnection:
             try:
                 turn_complete = response["serverContent"]["turnComplete"]
                 if turn_complete:
-                    print("\n[Gemini] End of Turn. The model has finished responding.\n")
                     # If the user interrupts or the turn is done, any leftover audio is ignored or cleared.
                     while not self.audio_queue.empty():
                         self.audio_queue.get_nowait()
@@ -196,10 +199,10 @@ class GeminiConnection:
 
         try:
             while True:
-                # Wait for next chunk from the queue
                 audio_chunk = await self.audio_queue.get()
-                # Non-blocking: delegate writing to a thread
+                self.is_playing = True  # Set flag before playing
                 await asyncio.to_thread(stream.write, audio_chunk)
+                self.is_playing = False  # Clear flag after playing
         except asyncio.CancelledError:
             pass
         finally:
