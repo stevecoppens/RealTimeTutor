@@ -1,209 +1,158 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Camera, Mic, StopCircle, Play } from 'lucide-react';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Button } from '@/components/ui/button';
+import { Mic, StopCircle } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
-export default function GeminiPlayground() {
-  const [mode, setMode] = useState('idle'); // idle, camera, audio
+export default function GeminiVoiceChat() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState(null);
-  const [response, setResponse] = useState('');
-  const [isPlaying, setIsPlaying] = useState(false);
-  const audioContextRef = useRef(null);
-  const audioQueueRef = useRef([]);
-  const videoRef = useRef(null);
-  const mediaRecorderRef = useRef(null);
-  const streamRef = useRef(null);
+  const [text, setText] = useState('');
   const wsRef = useRef(null);
-  
-  // Initialize audio context
-  useEffect(() => {
-    audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
-    return () => {
-      if (audioContextRef.current) {
-        audioContextRef.current.close();
-      }
-    };
-  }, []);
+  const audioContextRef = useRef(null);
+  const audioInputRef = useRef(null);
+  const audioOutputRef = useRef(null);
+  const clientId = useRef(crypto.randomUUID());
 
-  useEffect(() => {
-    // Setup WebSocket connection
-    wsRef.current = new WebSocket('ws://localhost:8000/ws');
+  const initializeWebSocket = () => {
+    wsRef.current = new WebSocket(`ws://localhost:8000/ws/${clientId.current}`);
     
     wsRef.current.onmessage = async (event) => {
       const response = JSON.parse(event.data);
-      
-      if (response.type === 'text') {
-        setResponse(response.data);
-      } else if (response.type === 'audio') {
-        // Convert base64 audio to ArrayBuffer
-        const audioData = base64ToArrayBuffer(response.data);
-        
-        // Add to audio queue
-        audioQueueRef.current.push(audioData);
-        
-        // Start playing if not already playing
-        if (!isPlaying) {
-          setIsPlaying(true);
-          playNextAudio();
-        }
+      if (response.type === 'audio') {
+        // Handle incoming audio data
+        console.log('Received audio data:', response.data.length);
+        const audioData = base64ToFloat32Array(response.data);
+        playAudioData(audioData);
+      } else if (response.type === 'text') {
+        // Handle text responses
+        setText(prev => prev + response.text + '\n');
       }
     };
 
     wsRef.current.onerror = (error) => {
       setError('WebSocket error: ' + error.message);
+      setIsStreaming(false);
     };
 
-    return () => {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
-      }
-      if (wsRef.current) {
-        wsRef.current.close();
-      }
+    wsRef.current.onclose = () => {
+      setIsStreaming(false);
     };
-  }, []);
+  };
 
-  // Function to capture and send video frames
-  useEffect(() => {
-    if (mode === 'camera' && videoRef.current && wsRef.current) {
-      const canvas = document.createElement('canvas');
-      const context = canvas.getContext('2d');
+  // Initialize audio context and stream
+  const startAudioStream = async () => {
+    try {
+      // Initialize audio context
+      audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)({
+        sampleRate: 16000 // Required by Gemini
+      });
+
+      // Get microphone stream
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       
-      const sendFrame = () => {
-        if (videoRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-          canvas.width = videoRef.current.videoWidth;
-          canvas.height = videoRef.current.videoHeight;
-          context.drawImage(videoRef.current, 0, 0);
-          
-          const frame = canvas.toDataURL('image/jpeg');
-          wsRef.current.send(JSON.stringify({
-            type: 'video',
-            data: frame
-          }));
+      // Create audio input node
+      const source = audioContextRef.current.createMediaStreamSource(stream);
+      const processor = audioContextRef.current.createScriptProcessor(512, 1, 1);
+      
+      processor.onaudioprocess = (e) => {
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+            const inputData = e.inputBuffer.getChannelData(0);
+            const pcmData = float32ToPcm16(inputData);
+            // Convert to base64 and send as binary
+            const base64Data = btoa(String.fromCharCode(...new Uint8Array(pcmData.buffer)));
+            wsRef.current.send(new Blob([base64Data], { type: 'application/octet-stream' }));
         }
       };
 
-      const interval = setInterval(sendFrame, 1000); // Send frame every second
-
-      return () => clearInterval(interval);
-    }
-  }, [mode]);
-
-  // Function to handle audio recording and sending
-  // Audio helper functions
-  const base64ToArrayBuffer = (base64) => {
-    const binaryString = window.atob(base64);
-    const len = binaryString.length;
-    const bytes = new Uint8Array(len);
-    for (let i = 0; i < len; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
-    }
-    return bytes.buffer;
-  };
-
-  const playNextAudio = async () => {
-    if (audioQueueRef.current.length === 0) {
-      setIsPlaying(false);
-      return;
-    }
-
-    const audioData = audioQueueRef.current.shift();
-    
-    try {
-      // Decode the audio data
-      const audioBuffer = await audioContextRef.current.decodeAudioData(audioData);
+      source.connect(processor);
+      processor.connect(audioContextRef.current.destination);
       
-      // Create audio source
-      const source = audioContextRef.current.createBufferSource();
-      source.buffer = audioBuffer;
-      source.connect(audioContextRef.current.destination);
-      
-      // Play the audio
-      source.onended = playNextAudio;
-      source.start(0);
-    } catch (error) {
-      console.error('Error playing audio:', error);
-      playNextAudio(); // Skip to next audio if there's an error
-    }
-  };
-
-  const startRecording = async () => {
-    if (streamRef.current && wsRef.current) {
-      const mediaRecorder = new MediaRecorder(streamRef.current);
-      mediaRecorderRef.current = mediaRecorder;
-      
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0 && wsRef.current.readyState === WebSocket.OPEN) {
-          const reader = new FileReader();
-          reader.onload = () => {
-            wsRef.current.send(JSON.stringify({
-              type: 'audio',
-              data: reader.result
-            }));
-          };
-          reader.readAsDataURL(event.data);
-        }
-      };
-
-      mediaRecorder.start(1000); // Capture audio every second
-    }
-  };
-
-  const startCamera = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: true,
-        audio: true 
-      });
-      
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        streamRef.current = stream;
-        setMode('camera');
-        setIsStreaming(true);
-        startRecording();
-      }
-    } catch (err) {
-      setError('Failed to access camera: ' + err.message);
-    }
-  };
-
-  const startAudio = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        audio: true 
-      });
-      streamRef.current = stream;
-      setMode('audio');
+      audioInputRef.current = { source, processor, stream };
       setIsStreaming(true);
-      startRecording();
     } catch (err) {
       setError('Failed to access microphone: ' + err.message);
     }
   };
 
+  // Stop streaming
   const stopStream = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      if (videoRef.current) {
-        videoRef.current.srcObject = null;
-      }
-      if (mediaRecorderRef.current) {
-        mediaRecorderRef.current.stop();
-      }
-      setIsStreaming(false);
-      setMode('idle');
+    if (audioInputRef.current) {
+      const { source, processor, stream } = audioInputRef.current;
+      source.disconnect();
+      processor.disconnect();
+      stream.getTracks().forEach(track => track.stop());
+      audioInputRef.current = null;
     }
+
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+
+    setIsStreaming(false);
   };
+
+  // Utility function to convert base64 to Float32Array
+  const base64ToFloat32Array = (base64) => {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    // Convert to 16-bit PCM
+    const pcm16 = new Int16Array(bytes.buffer);
+    // Convert to float32
+    const float32 = new Float32Array(pcm16.length);
+    for (let i = 0; i < pcm16.length; i++) {
+      float32[i] = pcm16[i] / 32768.0;
+    }
+    return float32;
+  };
+
+  // Utility function to convert Float32Array to PCM16
+  const float32ToPcm16 = (float32Array) => {
+    const pcm16 = new Int16Array(float32Array.length);
+    for (let i = 0; i < float32Array.length; i++) {
+      const s = Math.max(-1, Math.min(1, float32Array[i]));
+      pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+    }
+    return pcm16;
+  };
+
+  // Play received audio data
+  const playAudioData = async (audioData) => {
+    console.log('Playing audio data:', audioData.length);
+    if (!audioContextRef.current) return;
+
+    const buffer = audioContextRef.current.createBuffer(1, audioData.length, 24000);
+    buffer.copyToChannel(audioData, 0);
+
+    const source = audioContextRef.current.createBufferSource();
+    source.buffer = buffer;
+    source.connect(audioContextRef.current.destination);
+    source.start();
+  };
+
+  // Start streaming
+  const startStream = async () => {
+    initializeWebSocket();
+    await startAudioStream();
+  };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      stopStream();
+    };
+  }, []);
 
   return (
     <div className="container mx-auto py-8 px-4">
       <div className="space-y-6">
-        <h1 className="text-4xl font-bold tracking-tight">Gemini 2.0 Playground</h1>
+        <h1 className="text-4xl font-bold tracking-tight">Gemini Voice Chat</h1>
         
         {error && (
           <Alert variant="destructive">
@@ -214,22 +163,12 @@ export default function GeminiPlayground() {
 
         <div className="flex gap-4">
           <Button
-            onClick={startCamera}
+            onClick={startStream}
             disabled={isStreaming}
-            className="gap-2"
-          >
-            <Camera className="h-4 w-4" />
-            Start Camera + Audio
-          </Button>
-
-          <Button
-            onClick={startAudio}
-            disabled={isStreaming}
-            variant="secondary"
             className="gap-2"
           >
             <Mic className="h-4 w-4" />
-            Start Audio Only
+            Start Voice Chat
           </Button>
 
           {isStreaming && (
@@ -239,41 +178,27 @@ export default function GeminiPlayground() {
               className="gap-2"
             >
               <StopCircle className="h-4 w-4" />
-              Stop Stream
+              Stop Chat
             </Button>
           )}
         </div>
 
-        {mode === 'camera' && (
-          <Card className="relative aspect-video w-full max-w-2xl mx-auto overflow-hidden">
-            <CardContent className="p-0">
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted
-                className="w-full h-full object-cover"
-              />
-            </CardContent>
-          </Card>
-        )}
-
-        {mode === 'audio' && (
+        {isStreaming && (
           <Card>
-            <CardContent className="flex items-center justify-center h-48">
+            <CardContent className="flex items-center justify-center h-24 mt-6">
               <div className="flex flex-col items-center gap-2">
-                <Mic className="h-12 w-12 text-gray-600" />
-                <p className="text-gray-600">Audio streaming...</p>
+                <Mic className="h-8 w-8 text-blue-500 animate-pulse" />
+                <p className="text-gray-600">Listening...</p>
               </div>
             </CardContent>
           </Card>
         )}
 
-        {response && (
+        {text && (
           <Card>
             <CardContent className="pt-6">
-              <h2 className="text-lg font-semibold mb-2">Gemini's Response:</h2>
-              <p className="text-gray-700">{response}</p>
+              <h2 className="text-lg font-semibold mb-2">Conversation:</h2>
+              <pre className="whitespace-pre-wrap text-gray-700">{text}</pre>
             </CardContent>
           </Card>
         )}

@@ -1,6 +1,6 @@
 fastapi==0.109.1
 uvicorn==0.27.0
 python-multipart==0.0.6
-websockets>=12.0
+websockets
 python-dotenv==1.0.0
 pyaudio==0.2.14

@@ -1,14 +1,13 @@
-import asyncio
-import base64
-import json
-import os
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
-from websockets.asyncio.client import connect
-import pyaudio
+import asyncio
+import json
+import base64
+import os
 from dotenv import load_dotenv
+from websockets.client import connect
+from typing import Dict
 
-# Load environment variables
 load_dotenv()
 
 app = FastAPI()
@@ -16,7 +15,7 @@ app = FastAPI()
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # In production, replace with your frontend URL
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -24,110 +23,149 @@ app.add_middleware(
 
 class GeminiConnection:
     def __init__(self):
-        self.api_key = os.getenv("GOOGLE_API_KEY")
+        self.api_key = os.environ.get("GEMINI_API_KEY")
         self.model = "gemini-2.0-flash-exp"
-        self.uri = f"wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key={self.api_key}"
+        self.uri = (
+            "wss://generativelanguage.googleapis.com/ws/"
+            "google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent"
+            f"?key={self.api_key}"
+        )
         self.ws = None
-        self.audio_queue = asyncio.Queue()
 
     async def connect(self):
-        self.ws = await connect(
-            self.uri,
-            additional_headers={"Content-Type": "application/json"}
-        )
+        """Initialize connection to Gemini"""
+        self.ws = await connect(self.uri, extra_headers={"Content-Type": "application/json"})
         
-        # Initialize the connection with model setup
-        await self.ws.send(json.dumps({
+        # Send initial setup message
+        setup_message = {
             "setup": {
                 "model": f"models/{self.model}",
                 "generation_config": {
+                    "response_modalities": ["AUDIO"],
                     "speech_config": {
                         "voice_config": {
                             "prebuilt_voice_config": {
-                                "voice_name": "Aoede"
+                                "voice_name": "Puck"
                             }
                         }
                     }
+                },
+                "system_instruction": {
+                    "parts": [
+                        {
+                            "text": "You are a friendly Gemini 2.0 model. Respond verbally in a casual, helpful tone."
+                        }
+                    ]
                 }
             }
-        }))
-        await self.ws.recv()
+        }
+        await self.ws.send(json.dumps(setup_message))
+        
+        # Wait for setup completion
+        setup_response = await self.ws.recv()
+        return setup_response
 
-    async def send_audio(self, audio_data):
-        if not self.ws:
-            await self.connect()
-            
-        await self.ws.send(json.dumps({
+    async def send_audio(self, audio_data: str):
+        """Send audio data to Gemini"""
+        realtime_input_msg = {
             "realtime_input": {
-                "media_chunks": [{
-                    "data": audio_data,
-                    "mime_type": "audio/pcm"
-                }]
+                "media_chunks": [
+                    {
+                        "data": audio_data,
+                        "mime_type": "audio/pcm"
+                    }
+                ]
             }
-        }))
+        }
+        await self.ws.send(json.dumps(realtime_input_msg))
+
+    async def receive(self):
+        print("Receiving message from Gemini")
+        """Receive message from Gemini"""
+        return await self.ws.recv()
 
     async def close(self):
+        """Close the connection"""
         if self.ws:
             await self.ws.close()
-            self.ws = None
 
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
+# Store active connections
+connections: Dict[str, GeminiConnection] = {}
+
+@app.websocket("/ws/{client_id}")
+async def websocket_endpoint(websocket: WebSocket, client_id: str):
     await websocket.accept()
-    gemini = GeminiConnection()
     
     try:
+        # Create new Gemini connection for this client
+        gemini = GeminiConnection()
+        connections[client_id] = gemini
+        
+        # Initialize Gemini connection
         await gemini.connect()
         
+        # Handle bidirectional communication
+        async def receive_from_client():
+            try:
+                while True:
+                    data = await websocket.receive_bytes()
+                    # Data is already in base64 format from the client
+                    # save data to wav file I can play
+                    with open("audio_data.wav", "wb") as f:
+                        f.write(data)
+                    await gemini.send_audio(data.decode())
+            except Exception as e:
+                print(f"Error receiving from client: {e}")
+
         async def receive_from_gemini():
-            while True:
-                msg = await gemini.ws.recv()
-                response = json.loads(msg)
-                
-                try:
-                    # Check for text response
-                    text = response.get("serverContent", {}).get("modelTurn", {}).get("parts", [{}])[0].get("text")
-                    if text:
-                        await websocket.send_json({
-                            "type": "text",
-                            "data": text
-                        })
+            try:
+                while True:
+                    msg = await gemini.receive()
+                    response = json.loads(msg)
+                    
+                    # Forward audio data to client
+                    try:
+                        parts = response["serverContent"]["modelTurn"]["parts"]
+                        for p in parts:
+                            if "inlineData" in p:
+                                audio_data = p["inlineData"]["data"]
+                                await websocket.send_json({
+                                    "type": "audio",
+                                    "data": audio_data
+                                })
+                            elif "text" in p:
+                                print(f"Received text: {p['text']}")
+                                await websocket.send_json({
+                                    "type": "text",
+                                    "data": p["text"]
+                                })
+                    except KeyError:
+                        pass
 
-                    # Check for audio response
-                    audio_data = response.get("serverContent", {}).get("modelTurn", {}).get("parts", [{}])[0].get("inlineData", {}).get("data")
-                    if audio_data:
-                        await websocket.send_json({
-                            "type": "audio",
-                            "data": audio_data  # Already base64 encoded
-                        })
+                    # Handle turn completion
+                    try:
+                        if response["serverContent"]["turnComplete"]:
+                            await websocket.send_json({
+                                "type": "turn_complete",
+                                "data": True
+                            })
+                    except KeyError:
+                        pass
+            except Exception as e:
+                print(f"Error receiving from Gemini: {e}")
 
-                    # Check for turn completion
-                    turn_complete = response.get("serverContent", {}).get("turnComplete", False)
-                    if turn_complete:
-                        await websocket.send_json({
-                            "type": "turn_complete",
-                            "data": True
-                        })
-                        
-                except Exception as e:
-                    print(f"Error processing Gemini response: {e}")
+        # Run both receiving tasks concurrently
+        async with asyncio.TaskGroup() as tg:
+            tg.create_task(receive_from_client())
+            tg.create_task(receive_from_gemini())
 
-        # Start receiving from Gemini in the background
-        receive_task = asyncio.create_task(receive_from_gemini())
-        
-        while True:
-            data = await websocket.receive_json()
-            
-            if data["type"] == "audio":
-                # Forward the audio data to Gemini
-                await gemini.send_audio(data["data"].split(',')[1])  # Remove data URL prefix
-                
     except Exception as e:
-        print(f"WebSocket error: {str(e)}")
+        print(f"WebSocket error: {e}")
     finally:
-        await gemini.close()
-        if not websocket.client_state.is_disconnected:
-            await websocket.close()
+        # Cleanup
+        if client_id in connections:
+            await connections[client_id].close()
+            del connections[client_id]
 
 if __name__ == "__main__":
     import uvicorn
