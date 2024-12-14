@@ -2,6 +2,8 @@
 
 A basic Python app for having voice conversations with Google's Gemini 2.0 AI model. Features real-time voice input and text-to-speech responses.
 
+https://github.com/user-attachments/assets/82228033-fcfb-4730-9723-3ed09e1979a2
+
 ## Getting Your Gemini API Key
 
 1. Go to [Google AI Studio](https://makersuite.google.com/app/apikey)
