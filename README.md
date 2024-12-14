@@ -1,72 +1,67 @@
-# Gemini Multimodal Playground
+# Gemini Voice Chat - Standalone Application
 
-A real-time multimodal playground for Google's Gemini 2.0 AI model, supporting both video and audio interactions.
+A basic Python app for having voice conversations with Google's Gemini 2.0 AI model. Features real-time voice input and text-to-speech responses.
 
-## Features
+## Getting Your Gemini API Key
 
-- Real-time video streaming with camera + audio
-- Audio-only streaming mode
-- Text-to-speech playback of Gemini's responses
-- WebSocket-based communication for low latency
-- Modern UI with shadcn/ui components
+1. Go to [Google AI Studio](https://makersuite.google.com/app/apikey)
+2. Sign in with your Google account
+3. Click "Create API Key"
+4. Copy the generated API key and paste in the .env file (see below under Installation)
 
-## Prerequisites
+## Installation
 
-- Python 3.8+
-- Node.js 16+
-- Google Cloud Project with Gemini API enabled
-- Google Cloud credentials
+1. Clone this repository or download the standalone folder
 
-## Setup
-
-1. Clone the repository:
+2. Create a virtual environment and activate it:
 ```bash
-git clone https://github.com/yourusername/gemini-multimodal-playground.git
-cd gemini-multimodal-playground
-```
-
-2. Set up the backend:
-```bash
-cd backend
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
+```
+
+3. Install the required packages:
+```bash
 pip install -r requirements.txt
 ```
 
-3. Set up the frontend:
-```bash
-cd frontend
-npm install
+4. Create a `.env` file in the standalone directory with your API key:
 ```
-
-4. Configure environment variables:
-- Copy `backend/.env.example` to `backend/.env` and update with your Google Cloud credentials
-- Copy `frontend/.env.example` to `frontend/.env`
+GEMINI_API_KEY=your_api_key_here
+```
 
 ## Running the Application
 
-1. Start the backend server:
+1. Make sure your virtual environment is activated
+2. Run the script:
 ```bash
-cd backend
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-python main.py
+python standalone.py
 ```
 
-2. In a new terminal, start the frontend:
-```bash
-cd frontend
-npm run dev
-```
+## Configuration Options
 
-3. Open http://localhost:3000 in your browser
+The application provides several configuration options through its GUI:
 
-## Development
+- **System Prompt**: The initial instructions given to Gemini about its role and behavior
+- **Voice**: Choose from different voice options for Gemini's responses:
+  - Puck
+  - Charon
+  - Kore
+  - Fenrir
+  - Aoede
+- **Enable Google Search**: Allows Gemini to search the internet for current information
+- **Allow Interruptions**: Enables interrupting Gemini while it's speaking
 
-- Backend is built with FastAPI and uses WebSockets for real-time communication
-- Frontend is built with Next.js 14, TypeScript, and Tailwind CSS
-- UI components from shadcn/ui library
-- Real-time media handling with WebRTC and MediaRecorder APIs
+## Usage
 
-## License
+1. Configure your desired settings in the GUI
+2. Click "Start Gemini" to begin
+3. Speak into your microphone when ready
+4. The equalizer will show your audio levels in real-time
+5. Gemini will respond with voice
+6. Click "Stop Gemini" to end the session
 
-MIT
+## Troubleshooting
+
+- **Audio feedback loop issue** - Gemini may interrupt itself when it detects its own voice output through your microphone. This occurs because the application processes all incoming audio, including Gemini's responses. To prevent this feedback loop, either:
+  1. Disable the "Allow Interruptions" option in settings
+  2. Use headphones/earphones to prevent your microphone from picking up Gemini's audio output

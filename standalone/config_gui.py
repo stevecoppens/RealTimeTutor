@@ -42,7 +42,7 @@ class VoiceEqualizer(tk.Canvas):
         for i, segment in enumerate(segments):
             rms = np.sqrt(np.mean(segment.astype(float)**2))
             # Normalize to 0-1 range and scale to height
-            height = min(int((rms / 32768.0) * self.height * 6), self.height)
+            height = min(int((rms / 32768.0) * self.height * 7), self.height)
             
             # Update bar height
             self.coords(
