@@ -66,7 +66,7 @@ class VoiceEqualizer(tk.Canvas):
 class ConfigGUI:
     def __init__(self):
         self.root = tk.Tk()
-        self.root.title("Gemini Configuration")
+        self.root.title("Gemini Multimodal Playground ✨")
         self.root.geometry("600x500")
         self.gemini_client = None
         self.gemini_thread = None
