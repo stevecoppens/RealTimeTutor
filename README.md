@@ -2,6 +2,8 @@
 
 A basic Python app for having voice conversations with Google's Gemini 2.0 AI model. Features real-time voice input and text-to-speech responses.
 
+*Note: the full-stack version of this playground is still WIP. Please only use the Standalone script for now.*
+
 https://github.com/user-attachments/assets/82228033-fcfb-4730-9723-3ed09e1979a2
 
 ## Getting Your Gemini API Key
