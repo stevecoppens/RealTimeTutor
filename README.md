@@ -11,11 +11,13 @@ https://github.com/user-attachments/assets/82228033-fcfb-4730-9723-3ed09e1979a2
 1. Go to [Google AI Studio](https://makersuite.google.com/app/apikey)
 2. Sign in with your Google account
 3. Click "Create API Key"
-4. Copy the generated API key and paste into the .env file (see below under Installation)
+4. Copy the generated API key and paste it into the .env file (see below under Installation)
 
 <img width="600" alt="API key creation" src="https://github.com/saharmor/gemini-multimodal-playground/blob/main/ai%20studio%20api%20key.png">
 
 ## Installation
+
+**Important note**: This repo requires Python 3.12 to run
 
 1. Clone this repository or download the standalone folder
 
