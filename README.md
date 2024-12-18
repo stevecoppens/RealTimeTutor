@@ -15,9 +15,17 @@ https://github.com/user-attachments/assets/82228033-fcfb-4730-9723-3ed09e1979a2
 
 <img width="600" alt="API key creation" src="https://github.com/saharmor/gemini-multimodal-playground/blob/main/ai%20studio%20api%20key.png">
 
-## Installation
+## Prerequisites
 
-**Important note**: This repo requires Python 3.12 to run
+1. Python 3.12 or higher
+2. A Google Cloud account
+3. A Gemini API key
+4. Tkinter (usually comes with Python)
+   - On Ubuntu/Debian: `sudo apt-get install python3-tk`
+   - On Fedora: `sudo dnf install python3-tkinter`
+   - On macOS & Windows: Already included with Python
+
+## Installation
 
 1. Clone this repository or download the standalone folder
 
