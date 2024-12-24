@@ -152,16 +152,26 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
             try:
                 while True:
                     try:
+                        # Check if connection is closed
+                        if websocket.client_state.value == 3:  # WebSocket.CLOSED
+                            print("WebSocket connection closed by client")
+                            return
+                            
                         message = await websocket.receive()
-                        msg_content = json.loads(message["text"])
-                        msg_type = msg_content["type"]
-                        print(f"Received message type: {msg_type}")
+                        
+                        # Check for close message
+                        if message["type"] == "websocket.disconnect":
+                            print("Received disconnect message")
+                            return
+                            
+                        message_content = json.loads(message["text"])
+                        msg_type = message_content["type"]
                         if msg_type == "audio":
-                            await gemini.send_audio(msg_content["data"])    
+                            await gemini.send_audio(message_content["data"])    
                         elif msg_type == "image":
-                            await gemini.send_image(msg_content["data"])
+                            await gemini.send_image(message_content["data"])
                         elif msg_type == "text":
-                            await gemini.send_text(msg_content["data"])
+                            await gemini.send_text(message_content["data"])
                         else:
                             print(f"Unknown message type: {msg_type}")
                     except json.JSONDecodeError as e:
@@ -172,6 +182,8 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                         continue
                     except Exception as e:
                         print(f"Error processing client message: {str(e)}")
+                        if "disconnect message" in str(e):
+                            return
                         continue
                             
             except Exception as e:
@@ -181,6 +193,10 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
         async def receive_from_gemini():
             try:
                 while True:
+                    if websocket.client_state.value == 3:  # WebSocket.CLOSED
+                        print("WebSocket closed, stopping Gemini receiver")
+                        return
+
                     msg = await gemini.receive()
                     response = json.loads(msg)
                     
@@ -188,6 +204,10 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                     try:
                         parts = response["serverContent"]["modelTurn"]["parts"]
                         for p in parts:
+                            # Check connection state before each send
+                            if websocket.client_state.value == 3:
+                                return
+                                
                             if "inlineData" in p:
                                 audio_data = p["inlineData"]["data"]
                                 await websocket.send_json({
