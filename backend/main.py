@@ -30,12 +30,16 @@ class GeminiConnection:
             f"?key={self.api_key}"
         )
         self.ws = None
+        self.config = None
 
     async def connect(self):
         """Initialize connection to Gemini"""
         self.ws = await connect(self.uri, additional_headers={"Content-Type": "application/json"})
         
-        # Send initial setup message
+        if not self.config:
+            raise ValueError("Configuration must be set before connecting")
+
+        # Send initial setup message with configuration
         setup_message = {
             "setup": {
                 "model": f"models/{self.model}",
@@ -44,7 +48,7 @@ class GeminiConnection:
                     "speech_config": {
                         "voice_config": {
                             "prebuilt_voice_config": {
-                                "voice_name": "Puck"
+                                "voice_name": self.config["voice"]
                             }
                         }
                     }
@@ -52,7 +56,7 @@ class GeminiConnection:
                 "system_instruction": {
                     "parts": [
                         {
-                            "text": "You are a friendly Gemini 2.0 model. Respond verbally in a casual, helpful tone."
+                            "text": self.config["systemPrompt"]
                         }
                     ]
                 }
@@ -63,6 +67,10 @@ class GeminiConnection:
         # Wait for setup completion
         setup_response = await self.ws.recv()
         return setup_response
+
+    def set_config(self, config):
+        """Set configuration for the connection"""
+        self.config = config
 
     async def send_audio(self, audio_data: str):
         """Send audio data to Gemini"""
@@ -98,6 +106,12 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
         # Create new Gemini connection for this client
         gemini = GeminiConnection()
         connections[client_id] = gemini
+        
+        config_data = await websocket.receive_json()
+        if config_data["type"] != "config":
+            raise ValueError("First message must be configuration")
+        
+        gemini.set_config(config_data["config"])
         
         # Initialize Gemini connection
         await gemini.connect()

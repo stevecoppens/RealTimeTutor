@@ -5,11 +5,29 @@ import { Mic, StopCircle } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
+
+interface Config {
+  systemPrompt: string;
+  voice: string;
+  googleSearch: boolean;
+  allowInterruptions: boolean;
+}
 
 export default function GeminiVoiceChat() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState(null);
   const [text, setText] = useState('');
+  const [config, setConfig] = useState<Config>({
+    systemPrompt: "You are a friendly Gemini 2.0 model. Respond verbally in a casual, helpful tone.",
+    voice: "Puck",
+    googleSearch: true,
+    allowInterruptions: false
+  });
+  const [isConnected, setIsConnected] = useState(false);
   const wsRef = useRef(null);
   const audioContextRef = useRef(null);
   const audioInputRef = useRef(null);
@@ -18,17 +36,30 @@ export default function GeminiVoiceChat() {
   let audioBuffer = []
   let isPlaying = false
 
-  const initializeWebSocket = () => {
+  const voices = ["Puck", "Charon", "Kore", "Fenrir", "Aoede"];
+
+  const startStream = async () => {
+    // Initialize WebSocket first
     wsRef.current = new WebSocket(`ws://localhost:8000/ws/${clientId.current}`);
     
+    wsRef.current.onopen = async () => {
+      // Send configuration as first message
+      wsRef.current.send(JSON.stringify({
+        type: 'config',
+        config: config
+      }));
+      
+      // Start audio stream after config is sent
+      await startAudioStream();
+      setIsStreaming(true);
+    };
+
     wsRef.current.onmessage = async (event) => {
       const response = JSON.parse(event.data);
       if (response.type === 'audio') {
-        // Handle incoming audio data
         const audioData = base64ToFloat32Array(response.data);
         playAudioData(audioData);
       } else if (response.type === 'text') {
-        // Handle text responses
         setText(prev => prev + response.text + '\n');
       }
     };
@@ -152,12 +183,6 @@ export default function GeminiVoiceChat() {
     source.start();
   };
 
-  // Start streaming
-  const startStream = async () => {
-    initializeWebSocket();
-    await startAudioStream();
-  };
-
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -168,7 +193,7 @@ export default function GeminiVoiceChat() {
   return (
     <div className="container mx-auto py-8 px-4">
       <div className="space-y-6">
-        <h1 className="text-4xl font-bold tracking-tight">Gemini Voice Chat</h1>
+        <h1 className="text-4xl font-bold tracking-tight">Gemini 2.0 Realtime Playground ✨</h1>
         
         {error && (
           <Alert variant="destructive">
@@ -176,6 +201,63 @@ export default function GeminiVoiceChat() {
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
+
+        <Card>
+          <CardContent className="pt-6 space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="system-prompt">System Prompt</Label>
+              <Textarea
+                id="system-prompt"
+                value={config.systemPrompt}
+                onChange={(e) => setConfig(prev => ({ ...prev, systemPrompt: e.target.value }))}
+                disabled={isConnected}
+                className="min-h-[100px]"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="voice-select">Voice</Label>
+              <Select
+                value={config.voice}
+                onValueChange={(value) => setConfig(prev => ({ ...prev, voice: value }))}
+                disabled={isConnected}
+              >
+                <SelectTrigger id="voice-select">
+                  <SelectValue placeholder="Select a voice" />
+                </SelectTrigger>
+                <SelectContent>
+                  {voices.map((voice) => (
+                    <SelectItem key={voice} value={voice}>
+                      {voice}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="google-search"
+                checked={config.googleSearch}
+                onCheckedChange={(checked) => 
+                  setConfig(prev => ({ ...prev, googleSearch: checked as boolean }))}
+                disabled={isConnected}
+              />
+              <Label htmlFor="google-search">Enable Google Search</Label>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="allow-interruptions"
+                checked={config.allowInterruptions}
+                onCheckedChange={(checked) => 
+                  setConfig(prev => ({ ...prev, allowInterruptions: checked as boolean }))}
+                disabled={isConnected}
+              />
+              <Label htmlFor="allow-interruptions">Allow Interruptions</Label>
+            </div>
+          </CardContent>
+        </Card>
 
         <div className="flex gap-4">
           <Button
