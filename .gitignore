@@ -162,3 +162,4 @@ cython_debug/
 #.idea/
 
 google_cloud_multimodal_key.json
+audio_data.wav
