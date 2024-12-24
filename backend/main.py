@@ -95,6 +95,35 @@ class GeminiConnection:
         if self.ws:
             await self.ws.close()
 
+    async def send_image(self, image_data: str):
+        """Send image data to Gemini"""
+        image_message = {
+            "realtime_input": {
+                "media_chunks": [
+                    {
+                        "data": image_data,
+                        "mime_type": "image/jpeg"
+                    }
+                ]
+            }
+        }
+        await self.ws.send(json.dumps(image_message))
+
+    async def send_text(self, text: str):
+        """Send text message to Gemini"""
+        text_message = {
+            "client_content": {
+                "turns": [
+                    {
+                        "role": "user",
+                        "parts": [{"text": text}]
+                    }
+                ],
+                "turn_complete": True
+            }
+        }
+        await self.ws.send(json.dumps(text_message))
+
 # Store active connections
 connections: Dict[str, GeminiConnection] = {}
 
@@ -107,11 +136,13 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
         gemini = GeminiConnection()
         connections[client_id] = gemini
         
+        # Wait for initial configuration
         config_data = await websocket.receive_json()
-        if config_data["type"] != "config":
+        if config_data.get("type") != "config":
             raise ValueError("First message must be configuration")
         
-        gemini.set_config(config_data["config"])
+        # Set the configuration
+        gemini.set_config(config_data.get("config", {}))
         
         # Initialize Gemini connection
         await gemini.connect()
@@ -120,14 +151,32 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
         async def receive_from_client():
             try:
                 while True:
-                    data = await websocket.receive_bytes()
-                    # Data is already in base64 format from the client
-                    # save data to wav file I can play
-                    with open("audio_data.wav", "wb") as f:
-                        f.write(data)
-                    await gemini.send_audio(data.decode())
+                    try:
+                        message = await websocket.receive()
+                        msg_content = json.loads(message["text"])
+                        msg_type = msg_content["type"]
+                        print(f"Received message type: {msg_type}")
+                        if msg_type == "audio":
+                            await gemini.send_audio(msg_content["data"])    
+                        elif msg_type == "image":
+                            await gemini.send_image(msg_content["data"])
+                        elif msg_type == "text":
+                            await gemini.send_text(msg_content["data"])
+                        else:
+                            print(f"Unknown message type: {msg_type}")
+                    except json.JSONDecodeError as e:
+                        print(f"JSON decode error: {e}")
+                        continue
+                    except KeyError as e:
+                        print(f"Key error in message: {e}")
+                        continue
+                    except Exception as e:
+                        print(f"Error processing client message: {str(e)}")
+                        continue
+                            
             except Exception as e:
-                print(f"Error receiving from client: {e}")
+                print(f"Fatal error in receive_from_client: {str(e)}")
+                return
 
         async def receive_from_gemini():
             try:
