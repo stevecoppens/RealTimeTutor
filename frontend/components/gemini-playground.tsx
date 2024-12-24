@@ -31,7 +31,6 @@ export default function GeminiVoiceChat() {
   const wsRef = useRef(null);
   const audioContextRef = useRef(null);
   const audioInputRef = useRef(null);
-  const audioOutputRef = useRef(null);
   const clientId = useRef(crypto.randomUUID());
   let audioBuffer = []
   let isPlaying = false
@@ -52,6 +51,7 @@ export default function GeminiVoiceChat() {
       // Start audio stream after config is sent
       await startAudioStream();
       setIsStreaming(true);
+      setIsConnected(true);
     };
 
     wsRef.current.onmessage = async (event) => {
@@ -125,6 +125,7 @@ export default function GeminiVoiceChat() {
     }
 
     setIsStreaming(false);
+    setIsConnected(false);
   };
 
   // Utility function to convert base64 to Float32Array
