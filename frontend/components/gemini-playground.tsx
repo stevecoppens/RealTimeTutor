@@ -38,23 +38,26 @@ export default function GeminiVoiceChat() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const videoStreamRef = useRef<MediaStream | null>(null);
   const videoIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [chatMode, setChatMode] = useState<'audio' | 'video' | null>(null);
 
   const voices = ["Puck", "Charon", "Kore", "Fenrir", "Aoede"];
   let audioBuffer = []
   let isPlaying = false
 
-  const startStream = async () => {
+  const startStream = async (mode: 'audio' | 'video') => {
+    setChatMode(mode);
     wsRef.current = new WebSocket(`ws://localhost:8000/ws/${clientId.current}`);
     
     wsRef.current.onopen = async () => {
-      // Send configuration as first message
       wsRef.current.send(JSON.stringify({
         type: 'config',
         config: config
       }));
       
-      // Start audio stream after config is sent
       await startAudioStream();
+      if (mode === 'video') {
+        setVideoEnabled(true);
+      }
       setIsStreaming(true);
       setIsConnected(true);
     };
@@ -127,15 +130,34 @@ export default function GeminiVoiceChat() {
       audioInputRef.current = null;
     }
 
+    if (chatMode === 'video') {
+      setVideoEnabled(false);
+      if (videoStreamRef.current) {
+        videoStreamRef.current.getTracks().forEach(track => track.stop());
+        videoStreamRef.current = null;
+      }
+      if (videoIntervalRef.current) {
+        clearInterval(videoIntervalRef.current);
+        videoIntervalRef.current = null;
+      }
+    }
+
+    // stop ongoing audio playback
+    if (audioContextRef.current) {
+      audioContextRef.current.close();
+      audioContextRef.current = null;
+    }
+
     if (wsRef.current) {
       wsRef.current.close();
       wsRef.current = null;
     }
 
     setIsStreaming(false);
+    setIsConnected(false);
+    setChatMode(null);
   };
 
-  // Play received audio data
   const playAudioData = async (audioData) => {
     audioBuffer.push(audioData)
     if (!isPlaying) {
@@ -293,29 +315,31 @@ export default function GeminiVoiceChat() {
               />
               <Label htmlFor="google-search">Enable Google Search</Label>
             </div>
-
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="allow-interruptions"
-                checked={config.allowInterruptions}
-                onCheckedChange={(checked) => 
-                  setConfig(prev => ({ ...prev, allowInterruptions: checked as boolean }))}
-                disabled={isConnected}
-              />
-              <Label htmlFor="allow-interruptions">Allow Interruptions</Label>
-            </div>
           </CardContent>
         </Card>
 
         <div className="flex gap-4">
+          {!isStreaming && (
+            <>
+            <Button
+              onClick={() => startStream('audio')}
+              disabled={isStreaming}
+              className="gap-2"
+          >
+            <Mic className="h-4 w-4" />
+            Start Chatting
+          </Button>
+
           <Button
-            onClick={startStream}
+            onClick={() => startStream('video')}
             disabled={isStreaming}
             className="gap-2"
           >
-            <Mic className="h-4 w-4" />
-            Start Voice Chat
-          </Button>
+            <Video className="h-4 w-4" />
+              Start Chatting with Video
+            </Button>
+            </>
+          )}
 
           {isStreaming && (
             <Button
@@ -340,54 +364,34 @@ export default function GeminiVoiceChat() {
           </Card>
         )}
 
-        <Card>
-          <CardContent className="pt-6 space-y-4">
-            <div className="flex justify-between items-center">
-              <h2 className="text-lg font-semibold">Video Input</h2>
-              <Button
-                onClick={toggleVideo}
-                variant={videoEnabled ? "destructive" : "default"}
-                className="gap-2"
-              >
-                {videoEnabled ? (
-                  <>
-                    <StopCircle className="h-4 w-4" />
-                    Stop Video
-                  </>
-                ) : (
-                  <>
-                    <Video className="h-4 w-4" />
-                    Start Video
-                  </>
-                )}
-              </Button>
-            </div>
-            
-            <div className="relative aspect-video bg-black rounded-lg overflow-hidden">
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted
-                width={640}
-                height={480}
-                className="w-full h-full object-contain"
-                style={{ transform: 'scaleX(-1)' }}
-              />
-              <canvas
-                ref={canvasRef}
-                className="hidden"
-                width={640}
-                height={480}
-              />
-              {!videoEnabled && (
-                <div className="absolute inset-0 flex items-center justify-center text-white bg-black bg-opacity-50">
-                  Camera not enabled
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+        {chatMode === 'video' && (
+          <Card>
+            <CardContent className="pt-6 space-y-4">
+              <div className="flex justify-between items-center">
+                <h2 className="text-lg font-semibold">Video Input</h2>
+              </div>
+              
+              <div className="relative aspect-video bg-black rounded-lg overflow-hidden">
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  width={640}
+                  height={480}
+                  className="w-full h-full object-contain"
+                  style={{ transform: 'scaleX(-1)' }}
+                />
+                <canvas
+                  ref={canvasRef}
+                  className="hidden"
+                  width={640}
+                  height={480}
+                />
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {text && (
           <Card>
