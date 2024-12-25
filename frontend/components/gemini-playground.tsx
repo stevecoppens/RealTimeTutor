@@ -192,8 +192,8 @@ export default function GeminiVoiceChat() {
         try {
           const stream = await navigator.mediaDevices.getUserMedia({
             video: {
-              width: { ideal: 640 },
-              height: { ideal: 480 }
+              width: { ideal: 320 },
+              height: { ideal: 240 }
             }
           });
           
@@ -377,8 +377,8 @@ export default function GeminiVoiceChat() {
                   autoPlay
                   playsInline
                   muted
-                  width={640}
-                  height={480}
+                  width={320}
+                  height={240}
                   className="w-full h-full object-contain"
                   style={{ transform: 'scaleX(-1)' }}
                 />
