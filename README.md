@@ -4,6 +4,9 @@ A Python application for having voice and video conversations with Google's new 
 
 ## Full-Stack Version
 
+https://github.com/user-attachments/assets/a81abaa5-2e70-42a9-857c-5ffbff22f821
+
+
 ## Getting Your Gemini API Key
 
 1. Go to [Google AI Studio](https://makersuite.google.com/app/apikey)
