@@ -1,31 +1,74 @@
 # Gemini Multimodal Playground ✨
 
-A basic Python app for having voice conversations with Google's Gemini 2.0 AI model. Features real-time voice input and text-to-speech responses.
+A Python application for having voice and video conversations with Google's new Gemini 2.0 model. Features real-time voice and video input and audio responses. Available in two versions: a full-stack web application and a standalone Python script.
 
-*Note: the full-stack version of this playground is still WIP. Please only use the Standalone script for now.*
-
-https://github.com/user-attachments/assets/82228033-fcfb-4730-9723-3ed09e1979a2
+## Full-Stack Version
 
 ## Getting Your Gemini API Key
 
 1. Go to [Google AI Studio](https://makersuite.google.com/app/apikey)
 2. Sign in with your Google account
 3. Click "Create API Key"
-4. Copy the generated API key and paste it into the .env file (see below under Installation)
+4. Copy the generated API key and paste it into the appropriate .env file
 
 <img width="600" alt="API key creation" src="https://github.com/saharmor/gemini-multimodal-playground/blob/main/ai%20studio%20api%20key.png">
 
-## Prerequisites
-
+### Prerequisites
 1. Python 3.12 or higher
-2. A Google Cloud account
-3. A Gemini API key
-4. Tkinter (usually comes with Python)
+2. Node.js 18 or higher
+3. A Google Cloud account
+4. A Gemini API key
+
+### Backend Setup
+1. Clone this repository
+2. Create a virtual environment and activate it:
+```bash
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+```
+
+3. Install the required packages:
+```bash
+pip install -r requirements.txt
+```
+
+4. Create a `.env` file in the root directory with your API key:
+```
+GEMINI_API_KEY=your_api_key_here
+```
+
+5. Start the backend server:
+```bash
+python backend/main.py
+```
+
+### Frontend Setup
+1. Navigate to the frontend directory:
+```bash
+cd frontend
+```
+
+2. Install dependencies:
+```bash
+npm install
+```
+
+3. Start the development server:
+```bash
+npm run dev
+```
+
+4. Open http://localhost:3000 in your browser
+
+## Standalone Version
+
+### Prerequisites
+Same as above, but only Python-related requirements are needed and Tkinter:
    - On Ubuntu/Debian: `sudo apt-get install python3-tk`
    - On Fedora: `sudo dnf install python3-tkinter`
    - On macOS & Windows: Already included with Python
 
-## Installation
+### Installation
 
 1. Clone this repository or download the standalone folder
 
@@ -45,7 +88,7 @@ pip install -r requirements.txt
 GEMINI_API_KEY=your_api_key_here
 ```
 
-## Running the Application
+### Running the Standalone Application
 
 1. Make sure your virtual environment is activated
 2. Run the script:
@@ -55,7 +98,7 @@ python standalone.py
 
 ## Configuration Options
 
-The application provides several configuration options through its GUI:
+Both versions provide several configuration options:
 
 - **System Prompt**: The initial instructions given to Gemini about its role and behavior
 - **Voice**: Choose from different voice options for Gemini's responses:
@@ -64,17 +107,8 @@ The application provides several configuration options through its GUI:
   - Kore
   - Fenrir
   - Aoede
-- **Enable Google Search**: Allows Gemini to search the internet for current information (doesn't work yet)
-- **Allow Interruptions**: Enables interrupting Gemini while it's speaking (see Troubleshooting below if Gemini constantly interrupts itself)
-
-## Usage
-
-1. Configure your desired settings in the GUI
-2. Click "Start Gemini" to begin
-3. Speak into your microphone when ready
-4. The equalizer will show your audio levels in real-time
-5. Gemini will respond with voice
-6. Click "Stop Gemini" to end the session
+- **Enable Google Search**: Allows Gemini to search the internet for current information
+- **Allow Interruptions**: Enables interrupting Gemini while it's speaking
 
 ## Troubleshooting
 
