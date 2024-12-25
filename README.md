@@ -62,6 +62,8 @@ npm run dev
 
 ## Standalone Version
 
+https://github.com/user-attachments/assets/82228033-fcfb-4730-9723-3ed09e1979a2
+
 ### Prerequisites
 Same as above, but only Python-related requirements are needed and Tkinter:
    - On Ubuntu/Debian: `sudo apt-get install python3-tk`
