@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Mic, StopCircle, Video } from 'lucide-react';
+import { Mic, StopCircle, Video, Monitor } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -39,13 +39,20 @@ export default function GeminiVoiceChat() {
   const videoStreamRef = useRef<MediaStream | null>(null);
   const videoIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [chatMode, setChatMode] = useState<'audio' | 'video' | null>(null);
+  const [videoSource, setVideoSource] = useState<'camera' | 'screen' | null>(null);
 
   const voices = ["Puck", "Charon", "Kore", "Fenrir", "Aoede"];
   let audioBuffer = []
   let isPlaying = false
 
-  const startStream = async (mode: 'audio' | 'video') => {
-    setChatMode(mode);
+  const startStream = async (mode: 'audio' | 'camera' | 'screen') => {
+
+    if (mode !== 'audio') {
+      setChatMode('video');
+    } else {
+      setChatMode('audio');
+    }
+
     wsRef.current = new WebSocket(`ws://localhost:8000/ws/${clientId.current}`);
     
     wsRef.current.onopen = async () => {
@@ -55,9 +62,12 @@ export default function GeminiVoiceChat() {
       }));
       
       await startAudioStream();
-      if (mode === 'video') {
+
+      if (mode !== 'audio') {
         setVideoEnabled(true);
+        setVideoSource(mode)
       }
+
       setIsStreaming(true);
       setIsConnected(true);
     };
@@ -132,6 +142,8 @@ export default function GeminiVoiceChat() {
 
     if (chatMode === 'video') {
       setVideoEnabled(false);
+      setVideoSource(null);
+
       if (videoStreamRef.current) {
         videoStreamRef.current.getTracks().forEach(track => track.stop());
         videoStreamRef.current = null;
@@ -190,12 +202,16 @@ export default function GeminiVoiceChat() {
     if (videoEnabled && videoRef.current) {
       const startVideo = async () => {
         try {
-          const stream = await navigator.mediaDevices.getUserMedia({
-            video: {
-              width: { ideal: 320 },
-              height: { ideal: 240 }
-            }
-          });
+          let stream;
+          if (videoSource === 'camera') {
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: { width: { ideal: 320 }, height: { ideal: 240 } }
+            });
+          } else if (videoSource === 'screen') {
+            stream = await navigator.mediaDevices.getDisplayMedia({
+              video: { width: { ideal: 1920 }, height: { ideal: 1080 } }
+            });
+          }
           
           videoRef.current.srcObject = stream;
           videoStreamRef.current = stream;
@@ -207,8 +223,16 @@ export default function GeminiVoiceChat() {
 
         } catch (err) {
           console.error('Video initialization error:', err);
-          setError('Failed to access camera: ' + err.message);
+          setError('Failed to access camera/screen: ' + err.message);
+
+          if (videoSource === 'screen') {
+            // Reset chat mode and clean up any existing connections
+            setChatMode(null);
+            stopStream();
+          }
+
           setVideoEnabled(false);
+          setVideoSource(null);
         }
       };
 
@@ -226,7 +250,7 @@ export default function GeminiVoiceChat() {
         }
       };
     }
-  }, [videoEnabled]);
+  }, [videoEnabled, videoSource]);
 
   // Frame capture function
   const captureAndSendFrame = () => {
@@ -331,14 +355,25 @@ export default function GeminiVoiceChat() {
           </Button>
 
           <Button
-            onClick={() => startStream('video')}
+            onClick={() => startStream('camera')}
             disabled={isStreaming}
             className="gap-2"
           >
             <Video className="h-4 w-4" />
               Start Chatting with Video
             </Button>
-            </>
+          
+          <Button
+            onClick={() => startStream('screen')}
+            disabled={isStreaming}
+            className="gap-2"
+          >
+            <Monitor className="h-4 w-4" />
+              Start Chatting with Screen
+            </Button>
+          </>
+
+            
           )}
 
           {isStreaming && (
@@ -364,7 +399,7 @@ export default function GeminiVoiceChat() {
           </Card>
         )}
 
-        {chatMode === 'video' && (
+        {(chatMode === 'video') && (
           <Card>
             <CardContent className="pt-6 space-y-4">
               <div className="flex justify-between items-center">
@@ -380,7 +415,8 @@ export default function GeminiVoiceChat() {
                   width={320}
                   height={240}
                   className="w-full h-full object-contain"
-                  style={{ transform: 'scaleX(-1)' }}
+                  //style={{ transform: 'scaleX(-1)' }}
+                  style={{ transform: videoSource === 'camera' ? 'scaleX(-1)' : 'none' }}
                 />
                 <canvas
                   ref={canvasRef}
