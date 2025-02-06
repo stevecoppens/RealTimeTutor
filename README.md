@@ -1,10 +1,17 @@
 # Gemini Multimodal Playground ✨
 
-A Python application for having voice, video, and screen sharing conversations with Google's new Gemini 2.0 model. Features real-time voice, video, and screen sharing input with audio responses. Available in two versions: a full-stack web application and a standalone Python script.
+A Python application for having voice, video, and screen sharing conversations with Google's new Gemini 2.0 model. Features real-time voice, video, and screen-sharing input with audio responses. Available in two versions: a full-stack web application and a standalone Python script.
 
 ## Full-Stack Version
 
+## Live Camera Stream
+
 https://github.com/user-attachments/assets/a81abaa5-2e70-42a9-857c-5ffbff22f821
+
+## Live Screen Sharing
+
+https://github.com/user-attachments/assets/925e3936-c2b8-4442-adf7-8dacd47f9f92
+
 
 
 ## Getting Your Gemini API Key
